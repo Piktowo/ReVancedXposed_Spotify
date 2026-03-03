@@ -201,15 +201,19 @@ public final class UnlockPremiumPatch {
     ) {
         try {
             List<T> filtered = new ArrayList<>();
+            boolean changed = false;
             for (T section : sections) {
                 int featureTypeId = featureTypeExtractor.getFeatureTypeId(section);
                 if (idsToRemove.contains(featureTypeId)) {
                     Logger.printInfo(() -> "Filtering section with feature type id " + featureTypeId);
+                    changed = true;
                 } else {
                     filtered.add(section);
                 }
             }
-            return filtered;
+            // Return the original reference if nothing was removed, to preserve the exact
+            // protobuf list type and avoid ClassCastException in Spotify's internal code.
+            return changed ? filtered : sections;
         } catch (Exception ex) {
             Logger.printException(() -> "filterSections failure", ex);
             return sections;

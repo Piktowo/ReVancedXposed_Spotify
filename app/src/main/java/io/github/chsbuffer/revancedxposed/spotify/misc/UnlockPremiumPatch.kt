@@ -89,17 +89,26 @@ fun SpotifyHook.UnlockPremium() {
         })
 
     // Remove ads sections from home.
-    // Returns a filtered copy instead of mutating the original protobuf list,
-    // preventing detection through protobuf integrity checks.
+    // Returns a filtered copy instead of mutating the original protobuf list.
+    // Only replaces param.result if sections were actually removed; if nothing changed,
+    // the original protobuf list reference is preserved to avoid ClassCastException.
     ::homeStructureGetSectionsFingerprint.hookMethod {
         after { param ->
-            param.result = UnlockPremiumPatch.filterHomeSections(param.result as List<*>)
+            runCatching {
+                val original = param.result as List<*>
+                val filtered = UnlockPremiumPatch.filterHomeSections(original)
+                if (filtered !== original) param.result = filtered
+            }.onFailure { Logger.printDebug { "homeStructureGetSections hook failed: ${it.message}" } }
         }
     }
     // Remove ads sections from browser.
     ::browseStructureGetSectionsFingerprint.hookMethod {
         after { param ->
-            param.result = UnlockPremiumPatch.filterBrowseSections(param.result as List<*>)
+            runCatching {
+                val original = param.result as List<*>
+                val filtered = UnlockPremiumPatch.filterBrowseSections(original)
+                if (filtered !== original) param.result = filtered
+            }.onFailure { Logger.printDebug { "browseStructureGetSections hook failed: ${it.message}" } }
         }
     }
 
