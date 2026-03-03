@@ -50,9 +50,20 @@ jobs:
       run: |
         GIT_DESCRIBE=$(git rev-parse --short HEAD)
         GIT_COMMIT_DATE=$(git log -1 --format=%cd --date=format:%y%m%d)
+        # Collect commit messages since the last autobuild tag, fallback to last 10 commits
+        LAST_TAG=$(gh release view autobuild --json tagName -q .tagName 2>/dev/null || echo "")
+        if [ -n "$LAST_TAG" ]; then
+          CHANGELOG=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s" 2>/dev/null || git log -10 --pretty=format:"- %s")
+        else
+          CHANGELOG=$(git log -10 --pretty=format:"- %s")
+        fi
+        NOTES="Commit \`${GIT_DESCRIBE}\`. The package name and signature of this build are different every day. You don't have to reinstall it every day.
+
+## Changelog
+${CHANGELOG}"
         cd app/build/outputs/apk/universal/release/
         mv app-universal-release.apk ReVancedXposedSpotify-${GIT_COMMIT_DATE}.apk
         gh release delete autobuild --yes || true
-        gh release create autobuild ReVancedXposedSpotify-${GIT_COMMIT_DATE}.apk --latest --title "Build ${GIT_COMMIT_DATE}" --notes "Commit ${GIT_DESCRIBE}. The package name and signature of this build are different every day. You don't have to reinstall it every day."
+        gh release create autobuild ReVancedXposedSpotify-${GIT_COMMIT_DATE}.apk --latest --title "Build ${GIT_COMMIT_DATE}" --notes "${NOTES}"
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
