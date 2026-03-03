@@ -13,37 +13,38 @@ import java.util.concurrent.atomic.AtomicReference
 fun SpotifyHook.SkipAds() {
     val mainHandler = Handler(Looper.getMainLooper())
 
-    // Holds the epj0 skip command dispatcher, captured the first time the user presses skip.
+    // Holds the epj0 skip command dispatcher.
     // epj0.accept(awc0Instance) routes a SkipToNextTrack command through the player pipeline.
     val skipExecutorRef = AtomicReference<Any?>(null)
 
-    // ── Step 1: find awc0 class (SkipToNextTrack{}) ──────────────────────────────
-    // skipToNextTrackClassFingerprint finds awc0.toString(); .declaringClass = awc0
-    val awc0Class = ::skipToNextTrackClassFingerprint.method.declaringClass
-
-    // awc0 extends abstract fwc0 which has exactly two methods:
+    // fwc0 (base class of all player commands) declares:
     //   Object a(...13 params...)  – visitor dispatch
     //   void   b(...12 params...)  – command execution  ← we want this one
-    // Find b() by: return void, not a JVM synthetic/standard method name
-    val bMethod = awc0Class.declaredMethods.first { m ->
-        m.returnType == Void.TYPE
-            && m.name != "equals"
-            && m.name != "hashCode"
-            && m.name != "toString"
-            && !m.name.startsWith("<")
-    }
-
-    // Hook awc0.b() to capture the skip executor (epj0Var = args[5])
     // fwc0.b(w5n0, fpp0, twi0, eei0, qej0, [epj0], svj0, e3p0, f1j0, dpp0, epp0, rri0)
-    //                                         ^^^^^ index 5
-    XposedBridge.hookMethod(bMethod, object : XC_MethodHook() {
+    //                                         ^^^^^ index 5 is the skip executor
+    // Using parameterCount == 12 (from fwc0 abstract signature) for reliable method lookup.
+    fun findCommandBMethod(clazz: Class<*>) =
+        clazz.declaredMethods.first { it.returnType == Void.TYPE && it.parameterCount == 12 }
+
+    val captureExecutorHook = object : XC_MethodHook() {
         override fun beforeHookedMethod(param: MethodHookParam) {
             param.args.getOrNull(5)?.let { epj0 ->
-                skipExecutorRef.set(epj0)
-                Logger.printDebug { "SkipAds: captured skip executor ${epj0.javaClass.name}" }
+                if (skipExecutorRef.compareAndSet(null, epj0)) {
+                    Logger.printDebug { "SkipAds: captured skip executor via ${param.method.declaringClass.simpleName}" }
+                }
             }
         }
-    })
+    }
+
+    // ── Source A: awc0.b() – user presses the skip button ────────────────────────
+    val awc0Class = ::skipToNextTrackClassFingerprint.method.declaringClass
+    XposedBridge.hookMethod(findCommandBMethod(awc0Class), captureExecutorHook)
+
+    // ── Source B: bwc0.b() – Spotify internally skips on natural track end ───────
+    // This fires on EVERY track transition without user interaction, so the executor
+    // is captured immediately on first play, eliminating the "press skip once" requirement.
+    val bwc0Class = ::skipToNextTrackWithCommandClassFingerprint.method.declaringClass
+    XposedBridge.hookMethod(findCommandBMethod(bwc0Class), captureExecutorHook)
 
     // ── Step 2: find tut0 class (ad track model) ─────────────────────────────────
     // adTrackClassFingerprint finds tut0.a() which returns "spotify:ad:" + this.a
@@ -65,14 +66,12 @@ fun SpotifyHook.SkipAds() {
             mainHandler.postDelayed({
                 val executor = skipExecutorRef.get()
                 if (executor == null) {
-                    // User hasn't pressed skip yet this session; executor not yet captured.
-                    // The ad will play normally until the user manually skips once,
-                    // after which all subsequent ads will be auto-skipped.
+                    // Executor not yet captured – this can only happen if the ad is the very
+                    // first track ever played in this session (no natural transition yet).
                     Logger.printDebug { "SkipAds: skip executor not yet captured, cannot auto-skip" }
                     return@postDelayed
                 }
                 runCatching {
-                    // Instantiate a fresh SkipToNextTrack command and dispatch it
                     val awc0Instance = XposedHelpers.newInstance(awc0Class)
                     XposedHelpers.callMethod(executor, "accept", awc0Instance)
                     Logger.printDebug { "SkipAds: skip command dispatched successfully" }

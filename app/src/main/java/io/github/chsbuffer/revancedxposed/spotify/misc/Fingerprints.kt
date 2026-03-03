@@ -107,10 +107,19 @@ val pendragonJsonFetchMessageListRequestFingerprint = findMethodDirect {
     }.single()
 }
 
-// Finds awc0.toString() → declaringClass is the SkipToNextTrack command class (awc0)
+// Finds awc0.toString() → declaringClass is the no-arg SkipToNextTrack command class (awc0)
 // awc0.b(..., epj0Var, ...) calls epj0Var.accept(this) to dispatch the skip command
+// Triggered by the user pressing the skip button.
 val skipToNextTrackClassFingerprint = fingerprint {
     strings("SkipToNextTrack{}")
+    returns("Ljava/lang/String;")
+}
+
+// Finds bwc0.toString() → declaringClass is SkipToNextTrackWithCommand class (bwc0)
+// bwc0.b(..., epj0Var, ...) is called on every NATURAL track end by the player server.
+// This lets us capture the skip executor without any user interaction.
+val skipToNextTrackWithCommandClassFingerprint = fingerprint {
+    strings("SkipToNextTrackWithCommand{command=")
     returns("Ljava/lang/String;")
 }
 
