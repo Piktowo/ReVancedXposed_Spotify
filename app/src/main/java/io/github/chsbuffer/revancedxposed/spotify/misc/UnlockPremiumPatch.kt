@@ -17,13 +17,17 @@ import java.lang.reflect.Field
 @Suppress("UNCHECKED_CAST")
 fun SpotifyHook.UnlockPremium() {
     // Override the attributes map in the getter method.
-    ::productStateProtoFingerprint.hookMethod {
-        val field = ::attributesMapField.field
-        before { param ->
-            Logger.printDebug { field.get(param.thisObject)!!.toString() }
-            UnlockPremiumPatch.overrideAttributes(field.get(param.thisObject) as Map<String, *>)
-        }
-    }
+    // NOTE: Disabled since late Jan 2026 server-side dual-sync checks now detect this override
+    // and forcibly terminate the session, which also breaks Discord Rich Presence (OAuth token revoked).
+    // Keeping this disabled until a bypass is found.
+    //
+    // ::productStateProtoFingerprint.hookMethod {
+    //     val field = ::attributesMapField.field
+    //     before { param ->
+    //         Logger.printDebug { field.get(param.thisObject)!!.toString() }
+    //         UnlockPremiumPatch.overrideAttributes(field.get(param.thisObject) as Map<String, *>)
+    //     }
+    // }
 
     // Add the query parameter trackRows to show popular tracks in the artist page.
     ::buildQueryParametersFingerprint.hookMethod {
