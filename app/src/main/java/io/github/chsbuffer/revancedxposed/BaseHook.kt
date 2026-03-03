@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Application
 import android.os.Build
 import app.revanced.extension.shared.Logger
+import dalvik.system.BaseDexClassLoader
 import app.revanced.extension.shared.Utils
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
@@ -145,9 +146,55 @@ abstract class BaseHook(private val app: Application, val lpparam: LoadPackagePa
     private val moduleRel = BuildConfig.COMMIT_HASH
     private var cache = SharedPrefCache(app)
     private var dexkit = run {
-        System.loadLibrary("dexkit")
+        loadNativeLibrary("dexkit")
         DexKitCacheBridge.init(cache)
         DexKitCacheBridge.create("", lpparam.appInfo.sourceDir)
+    }
+
+    companion object {
+        private var nativeLibLoaded = false
+        private val nativeLibLock = Any()
+    }
+
+    /**
+     * Loads the native library by copying it to a randomly named temp file before loading,
+     * preventing detection by apps scanning /proc/self/maps for known library names like "dexkit".
+     */
+    private fun loadNativeLibrary(libName: String) {
+        synchronized(nativeLibLock) {
+            if (nativeLibLoaded) return
+            try {
+                val moduleClassLoader = BaseHook::class.java.classLoader
+                if (moduleClassLoader is BaseDexClassLoader) {
+                    val libPath = moduleClassLoader.findLibrary(libName)
+                    if (libPath != null) {
+                        val origFile = File(libPath)
+                        val chars = ('a'..'z') + ('0'..'9')
+                        val randomName = (1..16).map { chars.random() }.joinToString("") + ".so"
+                        val tempFile = File(app.cacheDir, randomName)
+                        try {
+                            origFile.inputStream().use { input ->
+                                tempFile.outputStream().use { output ->
+                                    input.copyTo(output)
+                                }
+                            }
+                            System.load(tempFile.absolutePath)
+                            nativeLibLoaded = true
+                            return
+                        } catch (e: Exception) {
+                            Logger.printDebug { "Native library rename load failed: ${e.message}" }
+                        } finally {
+                            tempFile.delete()
+                        }
+                    }
+                }
+            } catch (e: Throwable) {
+                Logger.printDebug { "Native library path discovery failed: ${e.message}" }
+            }
+            // Fallback to standard loading
+            System.loadLibrary(libName)
+            nativeLibLoaded = true
+        }
     }
 
     override fun Hook() {
@@ -181,7 +228,9 @@ abstract class BaseHook(private val app: Application, val lpparam: LoadPackagePa
         if (!isCached) {
             cache.clearAll()
             cache.put("id", id)
-            Utils.showToastLong("ReVanced Xposed is initializing, please wait...")
+            if (DEBUG) {
+                Utils.showToastLong("ReVanced Xposed is initializing, please wait...")
+            }
         }
     }
 
