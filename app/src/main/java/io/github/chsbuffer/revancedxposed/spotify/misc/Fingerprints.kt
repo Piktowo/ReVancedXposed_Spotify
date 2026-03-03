@@ -106,3 +106,17 @@ val pendragonJsonFetchMessageListRequestFingerprint = findMethodDirect {
         }
     }.single()
 }
+
+// Finds awc0.toString() → declaringClass is the SkipToNextTrack command class (awc0)
+// awc0.b(..., epj0Var, ...) calls epj0Var.accept(this) to dispatch the skip command
+val skipToNextTrackClassFingerprint = fingerprint {
+    strings("SkipToNextTrack{}")
+    returns("Ljava/lang/String;")
+}
+
+// Finds tut0.a() → declaringClass is the ad track data model class (tut0)
+// tut0 is constructed whenever Spotify prepares an audio/video ad track for playback
+val adTrackClassFingerprint = fingerprint {
+    strings("spotify:ad:")
+    returns("Ljava/lang/String;")
+}
